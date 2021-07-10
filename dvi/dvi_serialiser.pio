@@ -1,0 +1,32 @@
+.program dvi_serialiser
+.side_set 2
+.origin 0
+
+    out pc, 1    side 0b10
+	out pc, 1    side 0b01
+
+% c-sdk {
+
+#include <stdint.h>
+#include "hardware/pio.h"
+
+namespace dvi
+{
+
+inline void serialiserProgramInit(PIO pio, uint sm, uint offset, uint data_pins, uint nWords)
+{
+    pio_sm_set_pins_with_mask(pio, sm, 2u << data_pins, 3u << data_pins);
+    pio_sm_set_pindirs_with_mask(pio, sm, ~0u, 3u << data_pins);
+    pio_gpio_init(pio, data_pins);
+    pio_gpio_init(pio, data_pins + 1);
+
+    pio_sm_config c = dvi_serialiser_program_get_default_config(offset);
+    sm_config_set_sideset_pins(&c, data_pins);
+    sm_config_set_out_shift(&c, true /* right */, true /* autopull */, 10 * nWords);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, false);
+}
+
+}
+%}
