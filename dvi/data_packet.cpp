@@ -49,7 +49,7 @@ namespace dvi
         };
         // clang-format on
 
-        int encodeBCH3(const uint8_t *p)
+        int __not_in_flash_func(encodeBCH3)(const uint8_t *p)
         {
             auto v = bchTable_[p[0]];
             v = bchTable_[p[1] ^ v];
@@ -57,7 +57,7 @@ namespace dvi
             return v;
         }
 
-        int encodeBCH7(const uint8_t *p)
+        int __not_in_flash_func(encodeBCH7)(const uint8_t *p)
         {
             auto v = bchTable_[p[0]];
             v = bchTable_[p[1] ^ v];
@@ -80,9 +80,12 @@ namespace dvi
                 }
             }
 
-            int compute8(int v) const { return v_[v]; }
-            int compute8(int v0, int v1) const { return v_[v0] ^ v_[v1]; }
-            int compute8(int v0, int v1, int v2) const { return v_[v0] ^ v_[v1] ^ v_[v2]; }
+            int __not_in_flash_func(compute8)(int v) const { return v_[v]; }
+            int __not_in_flash_func(compute8)(int v0, int v1) const { return v_[v0] ^ v_[v1]; }
+            int __not_in_flash_func(compute8)(int v0, int v1, int v2) const
+            {
+                return v_[v0] ^ v_[v1] ^ v_[v2];
+            }
         };
 
         constexpr ParityTable __not_in_flash_func(parityTable_);
@@ -463,8 +466,8 @@ namespace dvi
         header[1] = 2;  // version
         header[2] = 13; // len
 
-        // int sc = 0;
-        int sc = 3; // scale hv
+        int sc = 0;
+        // int sc = 3; // scaled hv
 
         subPacket[0][1] = static_cast<int>(s) |
                           (r == ActiveFormatAspectRatio::NO_DATA ? 0 : 16) |

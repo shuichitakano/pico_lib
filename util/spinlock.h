@@ -28,19 +28,21 @@ namespace util
             spin_lock_unclaim(idx_);
         }
 
-        auto *get()
+        __attribute__((always_inline)) auto *get()
         {
             return spin_lock_instance(idx_);
         }
 
-        void lock()
+        __attribute__((always_inline)) void lock()
         {
             irqState_ = spin_lock_blocking(get());
+            //spin_lock_unsafe_blocking(get());
         }
 
-        void unlock()
+        __attribute__((always_inline)) void unlock()
         {
             spin_unlock(get(), irqState_);
+            //spin_unlock_unsafe(get());
         }
     };
 }

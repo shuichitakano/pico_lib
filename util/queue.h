@@ -25,13 +25,13 @@ namespace util
             queue_.reserve(n);
         }
 
-        size_t size()
+        __attribute__((always_inline)) size_t size()
         {
             std::lock_guard lock(spinlock_);
             return queue_.size();
         }
 
-        void enque(T &&v)
+        __attribute__((always_inline)) void enque(T &&v)
         {
             {
                 std::lock_guard lock(spinlock_);
@@ -41,7 +41,7 @@ namespace util
             __sev();
         }
 
-        T deque()
+        __attribute__((always_inline)) T deque()
         {
             while (1)
             {
@@ -49,7 +49,7 @@ namespace util
                     std::lock_guard lock(spinlock_);
                     if (!queue_.empty())
                     {
-                        auto r = queue_.front();
+                        auto r = std::move(queue_.front());
                         queue_.erase(queue_.begin());
                         return r;
                     }

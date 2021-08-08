@@ -62,11 +62,11 @@ namespace dvi
         struct SaveInterp
         {
             interp_hw_save_t s;
-            SaveInterp()
+            inline SaveInterp()
             {
                 interp_save(interp0_hw, &s);
             }
-            ~SaveInterp()
+            inline ~SaveInterp()
             {
                 interp_restore(interp0_hw, &s);
             }
@@ -98,5 +98,16 @@ namespace dvi
         encodeTMDSChannel16bpp(dstTMDS + stride * 0, src, stride, 0, 5);
         encodeTMDSChannel16bpp(dstTMDS + stride * 1, src, stride, 5, 6);
         encodeTMDSChannel16bpp(dstTMDS + stride * 2, src, stride, 11, 5);
+    }
+
+    void __not_in_flash_func(encodeTMDS_RGB555)(uint32_t *dstTMDS, const uint16_t *srcPixel, size_t w)
+    {
+        assert((reinterpret_cast<uintptr_t>(srcPixel) & 3) == 0);
+        auto *src = reinterpret_cast<const uint32_t *>(srcPixel);
+
+        auto stride = w / 2;
+        encodeTMDSChannel16bpp(dstTMDS + stride * 0, src, stride, 0, 5);
+        encodeTMDSChannel16bpp(dstTMDS + stride * 1, src, stride, 5, 5);
+        encodeTMDSChannel16bpp(dstTMDS + stride * 2, src, stride, 10, 5);
     }
 }

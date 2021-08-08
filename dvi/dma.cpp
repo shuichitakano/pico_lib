@@ -23,7 +23,7 @@ namespace dvi
         }
 
         // 赤
-        static uint32_t __not_in_flash_func(TMDSRedSym_)[3] = {
+        constexpr uint32_t __not_in_flash_func(TMDSRedSym_)[3] = {
             0x7fd00u, // 0x00, 0x00
             0x7fd00u, // 0x00, 0x00
             0xbfa01u, // 0xfc, 0xfc

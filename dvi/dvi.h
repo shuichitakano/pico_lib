@@ -29,7 +29,10 @@ namespace dvi
         void registerIRQThisCore();
         void start();
 
-        void __not_in_flash_func(loopScanBuffer16bpp)();
+        void
+            // __attribute__((optimize("O0")))
+            __not_in_flash_func(loopScanBuffer16bpp)();
+        void __not_in_flash_func(loopScanBuffer15bpp)();
 
         uint32_t getFrameCounter() const
         {
@@ -71,7 +74,7 @@ namespace dvi
         uint32_t frameCounter_ = 0;
 
         using TMDSBuffer = std::vector<uint32_t>;
-        static inline constexpr size_t N_BUFFERS = 3;
+        static inline constexpr size_t N_BUFFERS = 5;
         static inline constexpr size_t N_COLOR_CH = 3;
 
         TMDSBuffer tmdsBuffers_[N_BUFFERS];

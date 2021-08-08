@@ -38,7 +38,7 @@ namespace dvi
                                       PixelFormat::RGB,
                                       Colorimetry::ITU601,
                                       PixtureAspectRatio::_4_3,
-                                      ActiveFormatAspectRatio::_4_3,
+                                      ActiveFormatAspectRatio::SAME_AS_PAR,
                                       RGBQuantizationRange::FULL,
                                       VideoCode::_640x480P60);
 
@@ -93,6 +93,8 @@ namespace dvi
         auto prevState = lineState_;
         advanceLine();
 
+        dma_.waitForLastBlockTransferToStart(*timing_);
+
         if (auto p = releaseTMDSBuffer_[1])
         {
             freeTMDSQueue_.enque(std::move(p));
@@ -100,16 +102,18 @@ namespace dvi
         releaseTMDSBuffer_[1] = releaseTMDSBuffer_[0];
         releaseTMDSBuffer_[0] = nullptr;
 
-        dma_.waitForLastBlockTransferToStart(*timing_);
-
         uint32_t *tmdsBuf = nullptr;
         if (lineState_ == LineState::ACTIVE)
         {
             if (!curTMDSBuffer_)
             {
-                curTMDSBuffer_ = validTMDSQueue_.deque();
+                if (validTMDSQueue_.size())
+                {
+                    curTMDSBuffer_ = validTMDSQueue_.deque();
+                }
+                // 取得できなかった時のケアが必要
             }
-            tmdsBuf = curTMDSBuffer_->data();
+            tmdsBuf = curTMDSBuffer_ ? curTMDSBuffer_->data() : nullptr;
 
             if (lineCounter_ % N_LINE_PER_DATA == N_LINE_PER_DATA - 1)
             {
@@ -179,7 +183,7 @@ namespace dvi
             }
 #else
             //            audioSamplePos_ += samplesPerLine16_;
-            int n = std::min(4, std::min<int>(audioSamplePos_ >> 16, audioSampleRing_.getReadableSize()));
+            int n = std::max(0, std::min(4, std::min<int>(audioSamplePos_ >> 16, audioSampleRing_.getReadableSize())));
             audioSamplePos_ -= n << 16;
             if (n)
             {
@@ -270,14 +274,22 @@ namespace dvi
     void
     DVI::enableSerialiser(bool enable)
     {
+        pwm_set_enabled(pwm_gpio_to_slice_num(config_->pinClock), enable);
+
         uint mask = 0;
         for (int i = 0; i < N_TMDS_LANES; ++i)
         {
             int sm = i;
             mask |= 1u << (sm + PIO_CTRL_SM_ENABLE_LSB);
         }
-        (enable ? hw_set_bits : hw_clear_bits)(&pio_->ctrl, mask);
-        pwm_set_enabled(pwm_gpio_to_slice_num(config_->pinClock), enable);
+        if (enable)
+        {
+            hw_set_bits(&pio_->ctrl, mask);
+        }
+        else
+        {
+            hw_clear_bits(&pio_->ctrl, mask);
+        }
     }
 
     void DVI::advanceLine()
@@ -342,7 +354,24 @@ namespace dvi
             auto n2 = validLineQueue_.size();
             auto n3 = freeLineQueue_.size();
             if (n0 == 3 || n3 == 3)
+            {
                 printf("n %d %d %d %d\n", n0, n1, n2, n3);
+            }
+
+            validTMDSQueue_.enque(std::move(dstTMDS));
+            freeLineQueue_.enque(std::move(srcLine));
+        }
+    }
+
+    void
+    DVI::loopScanBuffer15bpp()
+    {
+        while (true)
+        {
+            auto dstTMDS = freeTMDSQueue_.deque();
+            auto srcLine = validLineQueue_.deque();
+
+            encodeTMDS_RGB555(dstTMDS->data(), srcLine->data(), srcLine->size());
 
             validTMDSQueue_.enque(std::move(dstTMDS));
             freeLineQueue_.enque(std::move(srcLine));
