@@ -8,6 +8,7 @@
 #include <array>
 #include <stdint.h>
 #include "defines.h"
+#include <pico.h>
 
 namespace dvi
 {
@@ -72,17 +73,17 @@ namespace dvi
         std::array<uint8_t, 8> subPacket[4];
 
     public:
-        void computeHeaderParity();
-        void computeSubPacketParity(int i);
-        void computeParity();
-        void computeInfoFrameCheckSum();
+        void __not_in_flash_func(computeHeaderParity)();
+        void __not_in_flash_func(computeSubPacketParity)(int i);
+        void __not_in_flash_func(computeParity)();
+        void __not_in_flash_func(computeInfoFrameCheckSum)();
 
-        void encodeHeader(uint32_t *dst, int hv, bool firstPacket) const;
-        void encodeSubPacket(uint32_t *dst1, uint32_t *dst2) const;
+        void __not_in_flash_func(encodeHeader)(uint32_t *dst, int hv, bool firstPacket) const;
+        void __not_in_flash_func(encodeSubPacket)(uint32_t *dst1, uint32_t *dst2) const;
 
-        void setNull();
+        void __not_in_flash_func(setNull)();
         void setAudioClockRegeneration(int CTS, int N);
-        int setAudioSample(const std::array<int16_t, 2> *p, int n, int frameCt);
+        int __not_in_flash_func(setAudioSample)(const std::array<int16_t, 2> *p, int n, int frameCt);
         void setAudioInfoFrame(int freq);
         void setAVIInfoFrame(ScanInfo s, PixelFormat y, Colorimetry c,
                              PixtureAspectRatio m, ActiveFormatAspectRatio r,
@@ -95,7 +96,7 @@ namespace dvi
     const uint32_t *getDefaultDataPacket12();
     const uint32_t *getDefaultDataPacket0(bool vsync, bool hsync);
 
-    void encode(DataIslandStream &dst, const DataPacket &packet, bool vsync, bool hsync);
+    void __not_in_flash_func(encode)(DataIslandStream &dst, const DataPacket &packet, bool vsync, bool hsync);
 }
 
 #endif /* _355AAF3D_8134_6412_12A7_A288F70C7D25 */
