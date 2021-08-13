@@ -43,7 +43,6 @@ namespace dvi
                                       VideoCode::_640x480P60);
 
         aviInfoFrame_.dump();
-        aviInfoFrame_.test();
     }
 
     void
@@ -103,26 +102,40 @@ namespace dvi
         releaseTMDSBuffer_[0] = nullptr;
 
         uint32_t *tmdsBuf = nullptr;
+        bool blankLine = false;
         if (lineState_ == LineState::ACTIVE)
         {
-            if (!curTMDSBuffer_)
+            if (lineCounter_ < blankSettings_.top ||
+                lineCounter_ >= (timing_->vActiveLines - blankSettings_.bottom))
             {
-                if (validTMDSQueue_.size())
-                {
-                    curTMDSBuffer_ = validTMDSQueue_.deque();
-                }
-                // 取得できなかった時のケアが必要
+                blankLine = true;
             }
-            tmdsBuf = curTMDSBuffer_ ? curTMDSBuffer_->data() : nullptr;
-
-            if (lineCounter_ % N_LINE_PER_DATA == N_LINE_PER_DATA - 1)
+            else
             {
-                releaseTMDSBuffer_[0] = curTMDSBuffer_;
-                curTMDSBuffer_ = nullptr;
+                if (!curTMDSBuffer_)
+                {
+                    if (validTMDSQueue_.size())
+                    {
+                        curTMDSBuffer_ = validTMDSQueue_.deque();
+                    }
+                    // 取得できなかった時のケアが必要
+                }
+                tmdsBuf = curTMDSBuffer_ ? curTMDSBuffer_->data() : nullptr;
+
+                if (lineCounter_ % N_LINE_PER_DATA == N_LINE_PER_DATA - 1)
+                {
+                    releaseTMDSBuffer_[0] = curTMDSBuffer_;
+                    curTMDSBuffer_ = nullptr;
+                }
+
+                if (enableScanLine_ && (lineCounter_ & 1))
+                {
+                    blankLine = true;
+                }
             }
         }
 
-        dma_.update(lineState_, tmdsBuf, *timing_);
+        dma_.update(lineState_, tmdsBuf, *timing_, blankSettings_, blankLine);
         if (enableDataIsland_)
         {
             updateDataPacket();

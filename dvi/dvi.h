@@ -34,10 +34,10 @@ namespace dvi
             __not_in_flash_func(loopScanBuffer16bpp)();
         void __not_in_flash_func(loopScanBuffer15bpp)();
 
-        uint32_t getFrameCounter() const
-        {
-            return frameCounter_;
-        }
+        uint32_t getFrameCounter() const { return frameCounter_; }
+
+        BlankSettings &getBlankSettings() { return blankSettings_; }
+        void setScanLine(bool f) { enableScanLine_ = f; }
 
         LineBuffer *__not_in_flash_func(getLineBuffer)();
         void __not_in_flash_func(setLineBuffer)(LineBuffer *);
@@ -64,7 +64,9 @@ namespace dvi
         PIO pio_;
         const Config *config_{};
         const Timing *timing_{};
+        BlankSettings blankSettings_;
         bool enableDataIsland_ = false;
+        bool enableScanLine_ = false;
 
         LineState lineState_{};
         int lineCounter_ = 0;
@@ -95,8 +97,7 @@ namespace dvi
         int samplesPerFrame_ = 0;
         int samplesPerLine16_ = 0;
 
-        std::vector<AudioSample>
-            audioSampleBuffer_;
+        std::vector<AudioSample> audioSampleBuffer_;
         util::RingBuffer<AudioSample> audioSampleRing_;
 
         int leftAudioSampleCount_ = 0;

@@ -31,6 +31,15 @@ namespace dvi
     };
 
     const Timing *getTiming640x480p60Hz();
+
+    struct BlankSettings
+    {
+        int left = 0;
+        int right = 0;
+        int top = 0;
+        int bottom = 0;
+    };
+
 }
 
 #endif /* CC31A9F7_8134_63A8_5DED_6FB68E08C7AE */

@@ -90,7 +90,6 @@ namespace dvi
                              RGBQuantizationRange q, VideoCode vic);
 
         void dump() const;
-        void test() const;
     };
 
     const uint32_t *getDefaultDataPacket12();
