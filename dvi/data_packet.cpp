@@ -269,66 +269,6 @@ namespace dvi
         }
     }
 
-    void
-    DataPacket::test() const
-    {
-        uint8_t t1[32];
-        uint8_t t2[32];
-        auto *p1 = t1;
-        auto *p2 = t2;
-        for (int i = 0; i < 8; ++i)
-        {
-            uint32_t v = (subPacket[0][i] << 0) |
-                         (subPacket[1][i] << 8) |
-                         (subPacket[2][i] << 16) |
-                         (subPacket[3][i] << 24);
-
-            auto t = (v ^ (v >> 7)) & 0x00aa00aa;
-            v = v ^ t ^ (t << 7);
-            t = (v ^ (v >> 14)) & 0x0000cccc;
-            v = v ^ t ^ (t << 14);
-            // 01234567 89abcdef ghijklmn opqrstuv
-            // 08go4cks 19hp5dlt 2aiq6emu 3bjr7fnv
-            p1[0] = (v >> 0) & 15;
-            p1[1] = (v >> 16) & 15;
-            p1[2] = (v >> 4) & 15;
-            p1[3] = (v >> 20) & 15;
-            p2[0] = (v >> 8) & 15;
-            p2[1] = (v >> 24) & 15;
-            p2[2] = (v >> 12) & 15;
-            p2[3] = (v >> 28) & 15;
-            p1 += 4;
-            p2 += 4;
-        }
-
-        printf("L1:");
-        for (int i = 0; i < 32; ++i)
-        {
-            printf("%x", t1[i]);
-        }
-        printf("\n");
-        printf("L2:");
-        for (int i = 0; i < 32; ++i)
-        {
-            printf("%x", t2[i]);
-        }
-        printf("\n");
-        for (int i = 0; i < 2; ++i)
-        {
-            auto t = i == 0 ? t1 : t2;
-            printf("Lane %d\n", i);
-            for (int j = 0; j < 4; ++j)
-            {
-                printf("%d: ", j);
-                for (int k = 0; k < 32; ++k)
-                {
-                    printf("%d", t[k] & (1 << j) ? 1 : 0);
-                }
-                printf("\n");
-            }
-        }
-    }
-
     void encode(DataIslandStream &dst, const DataPacket &packet, bool vsync, bool hsync)
     {
         int hv = (vsync ? 2 : 0) | (hsync ? 1 : 0);

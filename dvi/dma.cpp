@@ -29,6 +29,13 @@ namespace dvi
             0xbfa01u, // 0xfc, 0xfc
         };
 
+        // 黒
+        constexpr uint32_t __not_in_flash_func(TMDSBlackSym_)[3] = {
+            0x7fd00u, // 0x00, 0x00
+            0x7fd00u, // 0x00, 0x00
+            0x7fd00u, // 0x00, 0x00
+        };
+
         // Video Gaurdband
         constexpr uint32_t __not_in_flash_func(videoGaurdbandSyms_)[3] = {
             0b1011001100'1011001100,
@@ -54,6 +61,7 @@ namespace dvi
         listVBlankNoSync_.setupListForVBlank(timing, cfgs_, false);
         listActive_.setupListForActive(timing, cfgs_, reinterpret_cast<uint32_t *>(SRAM_BASE)); // この時点ではなんでもいい
         listActiveError_.setupListForActive(timing, cfgs_, nullptr);
+        listActiveBlank_.setupListForActive(timing, cfgs_, nullptr, TMDSBlackSym_);
 
         // SYNC Lane のデータ転送からしか割り込みは出さない
         uint32_t maskSyncCh = 1u << cfgs_[TMDS_SYNC_LANE].chData;
@@ -104,8 +112,15 @@ namespace dvi
     }
 
     void
-    DMA::update(LineState st, const uint32_t *tmdsBuf, const Timing &timing)
+    DMA::update(LineState st, const uint32_t *tmdsBuf, const Timing &timing,
+                const BlankSettings &blank, bool blankLine)
     {
+        if (blankLine)
+        {
+            listActiveBlank_.load(cfgs_);
+            return;
+        }
+
         switch (st)
         {
         case LineState::ACTIVE:
@@ -147,6 +162,7 @@ namespace dvi
         listVBlankNoSync_.updateDataIslandPtr(&nextDataStream_);
         listActive_.updateDataIslandPtr(&nextDataStream_);
         listActiveError_.updateDataIslandPtr(&nextDataStream_);
+        listActiveBlank_.updateDataIslandPtr(&nextDataStream_);
     }
 
     /////
@@ -205,7 +221,9 @@ namespace dvi
     }
 
     void
-    DMA::List::setupListForActive(const Timing &timing, const Configs &cfgs, const uint32_t *tmds)
+    DMA::List::setupListForActive(const Timing &timing, const Configs &cfgs,
+                                  const uint32_t *tmds,
+                                  const uint32_t *constSymbol)
     {
         bool vsync = !timing.vSyncPolarity;
 
@@ -223,7 +241,7 @@ namespace dvi
             const auto &cfg = cfgs[i];
 
             auto setActiveChunk = [&](auto &r) {
-                const void *src = &TMDSRedSym_[i];
+                const void *src = constSymbol ? &constSymbol[i] : &TMDSRedSym_[i];
                 auto lineSize = timing.hActivePixels / N_CHAR_PER_WORD;
                 if (tmds)
                 {

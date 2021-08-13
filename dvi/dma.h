@@ -24,7 +24,8 @@ namespace dvi
         void start();
         void __not_in_flash_func(clearInterruptReq)() const;
         void __not_in_flash_func(waitForLastBlockTransferToStart)(const Timing &timing) const;
-        void __not_in_flash_func(update)(LineState st, const uint32_t *tmdsBuf, const Timing &timing);
+        void __not_in_flash_func(update)(LineState st, const uint32_t *tmdsBuf, const Timing &timing,
+                                         const BlankSettings &blank, bool blankLine);
 
         void setupInternalDataPacketStream();
         void __not_in_flash_func(updateNextDataPacket)(LineState st, const DataPacket &packet, const Timing &timing);
@@ -94,7 +95,8 @@ namespace dvi
             };
 
             void setupListForVBlank(const Timing &timing, const Configs &cfgs, bool vSyncAsserted);
-            void setupListForActive(const Timing &timing, const Configs &cfgs, const uint32_t *tmds);
+            void setupListForActive(const Timing &timing, const Configs &cfgs, const uint32_t *tmds,
+                                    const uint32_t *constSymbol = {});
             void __not_in_flash_func(updateScanLineData)(const Timing &timing, const uint32_t *tmds);
             void __not_in_flash_func(updateDataIslandPtr)(const DataIslandStream *data);
 
@@ -107,6 +109,7 @@ namespace dvi
         List listVBlankNoSync_;
         List listActive_;
         List listActiveError_;
+        List listActiveBlank_;
 
         DataIslandStream nextDataStream_;
     };
