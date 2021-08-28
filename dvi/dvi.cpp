@@ -55,9 +55,33 @@ namespace dvi
     }
 
     void
+    DVI::unregisterIRQThisCore()
+    {
+        irq_set_enabled(DMA_IRQ_0, false);
+        irq_remove_handler(DMA_IRQ_0, dmaIRQEntry);
+
+        for (auto &p : releaseTMDSBuffer_)
+        {
+            if (p)
+            {
+                freeTMDSQueue_.enque(std::move(p));
+                p = nullptr;
+            }
+        }
+    }
+
+    void
     DVI::start()
     {
+        lineState_ = {};
+        lineCounter_ = 0;
+        for (int i = 0; i < N_TMDS_LANES; ++i)
+        {
+            pio_sm_clear_fifos(pio_, i);
+        }
+
         dma_.start();
+        started_ = true;
 
         // FIFOを完全に埋めてからシリアライズを始める
         for (int i = 0; i < N_TMDS_LANES; ++i)
@@ -69,6 +93,14 @@ namespace dvi
         }
 
         enableSerialiser(true);
+    }
+
+    void
+    DVI::stop()
+    {
+        dma_.stop();
+        enableSerialiser(false);
+        started_ = false;
     }
 
     void
@@ -88,6 +120,10 @@ namespace dvi
     DVI::dmaIRQHandler()
     {
         dma_.clearInterruptReq();
+        if (!started_)
+        {
+            return;
+        }
 
         auto prevState = lineState_;
         advanceLine();
@@ -362,15 +398,6 @@ namespace dvi
 
             encodeTMDS_RGB565(dstTMDS->data(), srcLine->data(), srcLine->size());
 
-            auto n0 = validTMDSQueue_.size();
-            auto n1 = freeTMDSQueue_.size();
-            auto n2 = validLineQueue_.size();
-            auto n3 = freeLineQueue_.size();
-            if (n0 == 3 || n3 == 3)
-            {
-                printf("n %d %d %d %d\n", n0, n1, n2, n3);
-            }
-
             validTMDSQueue_.enque(std::move(dstTMDS));
             freeLineQueue_.enque(std::move(srcLine));
         }
@@ -381,14 +408,20 @@ namespace dvi
     {
         while (true)
         {
-            auto dstTMDS = freeTMDSQueue_.deque();
-            auto srcLine = validLineQueue_.deque();
-
-            encodeTMDS_RGB555(dstTMDS->data(), srcLine->data(), srcLine->size());
-
-            validTMDSQueue_.enque(std::move(dstTMDS));
-            freeLineQueue_.enque(std::move(srcLine));
+            convertScanBuffer15bpp();
         }
+    }
+
+    void
+    DVI::convertScanBuffer15bpp()
+    {
+        auto dstTMDS = freeTMDSQueue_.deque();
+        auto srcLine = validLineQueue_.deque();
+
+        encodeTMDS_RGB555(dstTMDS->data(), srcLine->data(), srcLine->size());
+
+        validTMDSQueue_.enque(std::move(dstTMDS));
+        freeLineQueue_.enque(std::move(srcLine));
     }
 
     void
