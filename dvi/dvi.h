@@ -27,12 +27,15 @@ namespace dvi
     public:
         DVI(PIO pio, const Config *cfg, const Timing *timing);
         void registerIRQThisCore();
-        void start();
+        void unregisterIRQThisCore();
 
-        void
-            // __attribute__((optimize("O0")))
-            __not_in_flash_func(loopScanBuffer16bpp)();
+        void start();
+        void stop();
+
+        void __not_in_flash_func(loopScanBuffer16bpp)();
         void __not_in_flash_func(loopScanBuffer15bpp)();
+
+        void __not_in_flash_func(convertScanBuffer15bpp)();
 
         uint32_t getFrameCounter() const { return frameCounter_; }
 
@@ -45,7 +48,6 @@ namespace dvi
 
         void setAudioFreq(int freq, int CTS, int N);
         void allocateAudioBuffer(size_t size);
-
         util::RingBuffer<AudioSample> &getAudioRingBuffer() { return audioSampleRing_; }
 
     protected:
@@ -68,6 +70,7 @@ namespace dvi
         bool enableDataIsland_ = false;
         bool enableScanLine_ = false;
 
+        bool started_ = false;
         LineState lineState_{};
         int lineCounter_ = 0;
 

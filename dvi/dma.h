@@ -22,6 +22,8 @@ namespace dvi
         DMA(const Timing &timing, PIO pio);
 
         void start();
+        void stop();
+
         void __not_in_flash_func(clearInterruptReq)() const;
         void __not_in_flash_func(waitForLastBlockTransferToStart)(const Timing &timing) const;
         void __not_in_flash_func(update)(LineState st, const uint32_t *tmdsBuf, const Timing &timing,

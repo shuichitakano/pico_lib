@@ -57,10 +57,15 @@ namespace dvi
             printf("lane %d: DMA ch ctrl %d, ch data %d, FIFO %p, dreq %d\n", i, cfg.chCtrl, cfg.chData, cfg.txFIFO, cfg.dreq);
         }
 
+        printf("VBlankSync:\n");
         listVBlankSync_.setupListForVBlank(timing, cfgs_, true);
+        printf("VBlankNoSync:\n");
         listVBlankNoSync_.setupListForVBlank(timing, cfgs_, false);
+        printf("Active:\n");
         listActive_.setupListForActive(timing, cfgs_, reinterpret_cast<uint32_t *>(SRAM_BASE)); // この時点ではなんでもいい
+        printf("ActiveError:\n");
         listActiveError_.setupListForActive(timing, cfgs_, nullptr);
+        printf("ActiveBlank:\n");
         listActiveBlank_.setupListForActive(timing, cfgs_, nullptr, TMDSBlackSym_);
 
         // SYNC Lane のデータ転送からしか割り込みは出さない
@@ -84,6 +89,43 @@ namespace dvi
         dma_start_channel_mask((1u << cfgs_[0].chCtrl) |
                                (1u << cfgs_[1].chCtrl) |
                                (1u << cfgs_[2].chCtrl));
+    }
+
+    void
+    DMA::stop()
+    {
+#if 1
+        for (auto &c : cfgs_)
+        {
+            auto reset = [](int ch) {
+                auto cfg = dma_channel_get_default_config(ch);
+                dma_channel_set_config(ch, &cfg, false);
+            };
+            reset(c.chCtrl);
+            reset(c.chData);
+        }
+
+        uint32_t mask = 0;
+        for (auto &c : cfgs_)
+        {
+            mask |= 1 << c.chCtrl;
+            mask |= 1 << c.chData;
+        }
+        dma_hw->abort = mask;
+        while (dma_hw->abort & mask)
+        {
+            tight_loop_contents();
+        }
+#else
+
+        for (auto &c : cfgs_)
+        {
+            dma_channel_abort(c.chCtrl);
+            dma_channel_abort(c.chData);
+        }
+#endif
+        dma_irqn_acknowledge_channel(0, cfgs_[TMDS_SYNC_LANE].chData);
+        clearInterruptReq();
     }
 
     void
@@ -175,12 +217,12 @@ namespace dvi
         transfer_count = count;
         ch_cfg = dma_channel_get_default_config(cfg.chData);
 
-        printf("%p: ch %d, ra:%p wa:%p ct:%d c:%x irq:%d\n", this, cfg.chData, read_addr, write_addr, transfer_count, ch_cfg.ctrl, irq);
-
         channel_config_set_ring(&ch_cfg, false, readRingSizeLog2);
         channel_config_set_dreq(&ch_cfg, cfg.dreq);
         channel_config_set_chain_to(&ch_cfg, cfg.chCtrl);
         channel_config_set_irq_quiet(&ch_cfg, !irq);
+
+        printf("%p: ch %d, ra:%p wa:%p ct:%d c:%x irq:%d\n", this, cfg.chData, read_addr, write_addr, transfer_count, ch_cfg.ctrl, irq);
     }
 
     void
