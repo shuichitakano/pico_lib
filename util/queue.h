@@ -31,6 +31,11 @@ namespace util
             return queue_.size();
         }
 
+        __attribute__((always_inline)) const T &peek() const
+        {
+            return queue_.front();
+        }
+
         __attribute__((always_inline)) void enque(T &&v)
         {
             {

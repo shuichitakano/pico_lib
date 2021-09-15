@@ -152,9 +152,12 @@ namespace dvi
                 {
                     if (validTMDSQueue_.size())
                     {
-                        curTMDSBuffer_ = validTMDSQueue_.deque();
+                        int line = validTMDSQueue_.peek().line;
+                        if (line * 2 == lineCounter_)
+                        {
+                            curTMDSBuffer_ = validTMDSQueue_.deque().buffer;
+                        }
                     }
-                    // 取得できなかった時のケアが必要
                 }
                 tmdsBuf = curTMDSBuffer_ ? curTMDSBuffer_->data() : nullptr;
 
@@ -377,9 +380,9 @@ namespace dvi
     }
 
     void
-    DVI::setLineBuffer(LineBuffer *p)
+    DVI::setLineBuffer(int line, LineBuffer *p)
     {
-        validLineQueue_.enque(std::move(p));
+        validLineQueue_.enque({line, p});
     }
 
     void
@@ -387,7 +390,7 @@ namespace dvi
     {
         validLineQueue_.waitUntilContentAvailable();
     }
-
+    /*
     void
     DVI::loopScanBuffer16bpp()
     {
@@ -402,7 +405,7 @@ namespace dvi
             freeLineQueue_.enque(std::move(srcLine));
         }
     }
-
+*/
     void
     DVI::loopScanBuffer15bpp()
     {
@@ -418,10 +421,11 @@ namespace dvi
         auto dstTMDS = freeTMDSQueue_.deque();
         auto srcLine = validLineQueue_.deque();
 
-        encodeTMDS_RGB555(dstTMDS->data(), srcLine->data(), srcLine->size());
+        encodeTMDS_RGB555(dstTMDS->data(),
+                          srcLine.buffer->data(), srcLine.buffer->size());
 
-        validTMDSQueue_.enque(std::move(dstTMDS));
-        freeLineQueue_.enque(std::move(srcLine));
+        validTMDSQueue_.enque({srcLine.line, dstTMDS});
+        freeLineQueue_.enque(std::move(srcLine.buffer));
     }
 
     void

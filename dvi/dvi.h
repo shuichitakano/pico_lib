@@ -32,7 +32,7 @@ namespace dvi
         void start();
         void stop();
 
-        void __not_in_flash_func(loopScanBuffer16bpp)();
+        //        void __not_in_flash_func(loopScanBuffer16bpp)();
         void __not_in_flash_func(loopScanBuffer15bpp)();
 
         void __not_in_flash_func(convertScanBuffer15bpp)();
@@ -43,7 +43,7 @@ namespace dvi
         void setScanLine(bool f) { enableScanLine_ = f; }
 
         LineBuffer *__not_in_flash_func(getLineBuffer)();
-        void __not_in_flash_func(setLineBuffer)(LineBuffer *);
+        void __not_in_flash_func(setLineBuffer)(int line, LineBuffer *);
         void __not_in_flash_func(waitForValidLine)();
 
         void setAudioFreq(int freq, int CTS, int N);
@@ -78,19 +78,29 @@ namespace dvi
 
         uint32_t frameCounter_ = 0;
 
+        template <class T>
+        struct ResultBuffer
+        {
+            int line{};
+            T buffer{};
+        };
+
         using TMDSBuffer = std::vector<uint32_t>;
+        using ResultTMDSBuffer = ResultBuffer<TMDSBuffer *>;
+        using ResultLineBuffer = ResultBuffer<LineBuffer *>;
+
         static inline constexpr size_t N_BUFFERS = 5;
         static inline constexpr size_t N_COLOR_CH = 3;
 
         TMDSBuffer tmdsBuffers_[N_BUFFERS];
         LineBuffer lineBuffers_[N_BUFFERS];
 
-        util::Queue<TMDSBuffer *> validTMDSQueue_{N_BUFFERS};
+        util::Queue<ResultTMDSBuffer> validTMDSQueue_{N_BUFFERS};
         util::Queue<TMDSBuffer *> freeTMDSQueue_{N_BUFFERS};
         TMDSBuffer *curTMDSBuffer_{};
         TMDSBuffer *releaseTMDSBuffer_[2]{};
 
-        util::Queue<LineBuffer *> validLineQueue_{N_BUFFERS};
+        util::Queue<ResultLineBuffer> validLineQueue_{N_BUFFERS};
         util::Queue<LineBuffer *> freeLineQueue_{N_BUFFERS};
 
         DataPacket aviInfoFrame_;
