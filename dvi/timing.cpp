@@ -45,5 +45,4 @@ namespace dvi
         uint32_t h = vFrontPorch + vSyncWidth + vBackPorch + vActiveLines;
         return w * h;
     }
-
 }
