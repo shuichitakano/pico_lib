@@ -36,8 +36,13 @@ namespace dvi
         void __not_in_flash_func(loopScanBuffer15bpp)();
 
         void __not_in_flash_func(convertScanBuffer15bpp)();
+        void __not_in_flash_func(convertScanBuffer12bpp)();
+        void __not_in_flash_func(convertScanBuffer12bppScaled16_7)(int srcPixelOfs, int dstPixelOfs, int dstPixels);
 
-        uint32_t getFrameCounter() const { return frameCounter_; }
+        uint32_t getFrameCounter() const
+        {
+            return frameCounter_;
+        }
 
         BlankSettings &getBlankSettings() { return blankSettings_; }
         void setScanLine(bool f) { enableScanLine_ = f; }
