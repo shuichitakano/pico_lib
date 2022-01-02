@@ -190,7 +190,8 @@ namespace dvi
     DVI::updateDataPacket()
     {
         DataPacket packet;
-        auto proc = [&] {
+        auto proc = [&]
+        {
             if (samplesPerFrame_ == 0)
             {
                 return false;
@@ -267,7 +268,7 @@ namespace dvi
             auto size = chSize * N_TMDS_LANES;
             for (auto &v : tmdsBuffers_)
             {
-                v.resize(size);
+                v.resize(size, 0x7fd00u /* 0, 0 */);
                 freeTMDSQueue_.enque(&v);
             }
         }
@@ -284,7 +285,8 @@ namespace dvi
     void
     DVI::initSerialiser()
     {
-        auto configurePad = [](int gpio, bool invert) {
+        auto configurePad = [](int gpio, bool invert)
+        {
             hw_write_masked(
                 &padsbank0_hw->io[gpio],
                 (0 << PADS_BANK0_GPIO0_DRIVE_LSB),
@@ -346,7 +348,8 @@ namespace dvi
 
     void DVI::advanceLine()
     {
-        auto getNextLine = [&] {
+        auto getNextLine = [&]
+        {
             switch (lineState_)
             {
             case LineState::FRONT_PORCH:
@@ -423,6 +426,38 @@ namespace dvi
 
         encodeTMDS_RGB555(dstTMDS->data(),
                           srcLine.buffer->data(), srcLine.buffer->size());
+
+        validTMDSQueue_.enque({srcLine.line, dstTMDS});
+        freeLineQueue_.enque(std::move(srcLine.buffer));
+    }
+
+    void
+    DVI::convertScanBuffer12bpp()
+    {
+        auto dstTMDS = freeTMDSQueue_.deque();
+        auto srcLine = validLineQueue_.deque();
+
+        encodeTMDS_RGB444(dstTMDS->data(),
+                          srcLine.buffer->data(), srcLine.buffer->size());
+
+        validTMDSQueue_.enque({srcLine.line, dstTMDS});
+        freeLineQueue_.enque(std::move(srcLine.buffer));
+    }
+
+    void
+    DVI::convertScanBuffer12bppScaled16_7(int srcPixelOfs, int dstPixelOfs, int dstPixels)
+    {
+        auto dstTMDS = freeTMDSQueue_.deque();
+        auto srcLine = validLineQueue_.deque();
+
+        srcPixelOfs &= ~1u;
+        dstPixelOfs &= ~1u;
+
+        auto *p = dstTMDS->data() + (dstPixelOfs >> 1);
+        encodeTMDS_RGB444_Scaled16_7(p,
+                                     srcLine.buffer->data() + srcPixelOfs,
+                                     dstPixels,
+                                     srcLine.buffer->size());
 
         validTMDSQueue_.enque({srcLine.line, dstTMDS});
         freeLineQueue_.enque(std::move(srcLine.buffer));
