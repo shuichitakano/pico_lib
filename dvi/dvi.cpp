@@ -197,6 +197,16 @@ namespace dvi
                 return false;
             }
 
+            if (pendingAudioLineCount_)
+            {
+                --pendingAudioLineCount_;
+                return false;
+            }
+            if (audioSampleRing_.getReadableSize() == 0)
+            {
+                pendingAudioLineCount_ = 1024; // 枯渇しているようなら 2 frame くらい待ってみる
+            }
+
             audioSamplePos_ += samplesPerLine16_;
 
             if (lineState_ == LineState::FRONT_PORCH)

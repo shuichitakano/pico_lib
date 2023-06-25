@@ -121,6 +121,8 @@ namespace dvi
         int leftAudioSampleCount_ = 0;
         int audioSamplePos_ = 0;
         int audioFrameCount_ = 0;
+
+        int pendingAudioLineCount_ = 0;
     };
 }
 
