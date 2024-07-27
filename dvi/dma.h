@@ -13,6 +13,7 @@
 #include <stdint.h>
 #include <array>
 #include <utility>
+#include <cstdio>
 
 namespace dvi
 {
