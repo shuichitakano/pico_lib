@@ -146,7 +146,11 @@ namespace dvi
             {
                 auto chData = cfgs_[i].chData;
                 auto p = &dma_debug_hw->ch[chData];
-                auto ct = p->tcr;
+#if PICO_SDK_VERSION_MAJOR < 2
+                auto ct = p->tcr; 
+#else
+                auto ct = p->dbg_tcr;
+#endif 
                 if (ct == timing.hActivePixels / N_CHAR_PER_WORD)
                     break;
                 tight_loop_contents();

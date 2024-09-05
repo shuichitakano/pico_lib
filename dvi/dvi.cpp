@@ -11,6 +11,7 @@
 #include <hardware/gpio.h>
 #include <hardware/pwm.h>
 #include <hardware/irq.h>
+#include <hardware/structs/padsbank0.h>
 #include <stdio.h>
 #include <assert.h>
 
