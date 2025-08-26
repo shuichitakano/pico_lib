@@ -31,7 +31,7 @@ namespace dvi
         assert(pio_);
         assert(config_);
         assert(timing_);
-
+       
         initSerialiser();
         allocateBuffers(timing);
 
@@ -296,6 +296,12 @@ namespace dvi
     void
     DVI::initSerialiser()
     {
+        // Adjust PIO for gpio pins > 32
+        // The Waveshare RP2350-PiZero is a board that is using gpio pins > 32.
+        if (config_->pinTMDS[0] > 32 || config_->pinTMDS[1] > 32 || config_->pinTMDS[2] > 32)
+        {
+            pio_set_gpio_base(pio_, 16);
+        }
         auto configurePad = [](int gpio, bool invert)
         {
             hw_write_masked(
@@ -456,6 +462,14 @@ namespace dvi
     }
 
     void
+    DVI::convertScanBuffer12bpp(uint16_t line, uint16_t *buffer, size_t size)
+    {
+        auto dstTMDS = freeTMDSQueue_.deque();
+        encodeTMDS_RGB444(dstTMDS->data(), buffer, size);
+        validTMDSQueue_.enque({line, dstTMDS});
+    }
+
+    void
     DVI::convertScanBuffer12bppScaled16_7(int srcPixelOfs, int dstPixelOfs, int dstPixels)
     {
         auto dstTMDS = freeTMDSQueue_.deque();
@@ -473,6 +487,24 @@ namespace dvi
         validTMDSQueue_.enque({srcLine.line, dstTMDS});
         freeLineQueue_.enque(std::move(srcLine.buffer));
     }
+
+    void
+    DVI::convertScanBuffer12bppScaled16_7(int srcPixelOfs, int dstPixelOfs, int dstPixels, uint16_t line, uint16_t *buffer, size_t size)
+    {
+        auto dstTMDS = freeTMDSQueue_.deque();
+
+        srcPixelOfs &= ~1u;
+        dstPixelOfs &= ~1u;
+
+        auto *p = dstTMDS->data() + (dstPixelOfs >> 1);
+        encodeTMDS_RGB444_Scaled16_7(p,
+                                     buffer + srcPixelOfs,
+                                     dstPixels,
+                                     size);
+
+        validTMDSQueue_.enque({line, dstTMDS});
+    }
+
 
     void
     DVI::setAudioFreq(int freq, int CTS, int N)

@@ -37,8 +37,9 @@ namespace dvi
 
         void __not_in_flash_func(convertScanBuffer15bpp)();
         void __not_in_flash_func(convertScanBuffer12bpp)();
+        void __not_in_flash_func(convertScanBuffer12bpp)(uint16_t line, uint16_t *buffer, size_t size);
         void __not_in_flash_func(convertScanBuffer12bppScaled16_7)(int srcPixelOfs, int dstPixelOfs, int dstPixels);
-
+        void __not_in_flash_func(convertScanBuffer12bppScaled16_7)(int srcPixelOfs, int dstPixelOfs, int dstPixels, uint16_t line, uint16_t *buffer, size_t size);
         uint32_t getFrameCounter() const
         {
             return frameCounter_;

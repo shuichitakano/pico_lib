@@ -5,7 +5,9 @@
 
 #include "timing.h"
 #include <pico.h>
-
+#ifndef CPUKFREQKHZ
+#define CPUKFREQKHZ 252000
+#endif
 namespace dvi
 {
     namespace
@@ -23,7 +25,7 @@ namespace dvi
             .vBackPorch = 33,
             .vActiveLines = 480,
 
-            .bitClockKHz = 252000,
+            .bitClockKHz = CPUKFREQKHZ,
         };
     }
 
