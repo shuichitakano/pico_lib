@@ -506,24 +506,28 @@ namespace dvi
     }
 
     void
+    DVI::encodeLine12bpp(TMDSBuffer *dst, int line, const uint16_t *src, size_t size)
+    {
+        encodeTMDS_RGB444(dst->data(), src, size);
+        validTMDSQueue_.enque({line * N_LINE_PER_DATA, N_LINE_PER_DATA, dst});
+    }
+
+    void
     DVI::convertScanBuffer12bpp()
     {
         auto dstTMDS = freeTMDSQueue_.deque();
         auto srcLine = validLineQueue_.deque();
 
-        encodeTMDS_RGB444(dstTMDS->data(),
-                          srcLine.buffer->data(), srcLine.buffer->size());
-
-        validTMDSQueue_.enque({srcLine.line * N_LINE_PER_DATA, N_LINE_PER_DATA, dstTMDS});
+        encodeLine12bpp(dstTMDS, srcLine.line, srcLine.buffer->data(), srcLine.buffer->size());
+        // The line buffer belongs to the driver: give it back to the producer.
         freeLineQueue_.enque(std::move(srcLine.buffer));
     }
 
     void
     DVI::convertScanBuffer12bpp(uint16_t line, uint16_t *buffer, size_t size)
     {
-        auto dstTMDS = freeTMDSQueue_.deque();
-        encodeTMDS_RGB444(dstTMDS->data(), buffer, size);
-        validTMDSQueue_.enque({line * N_LINE_PER_DATA, N_LINE_PER_DATA, dstTMDS});
+        // The caller owns buffer, so it is not returned to freeLineQueue_.
+        encodeLine12bpp(freeTMDSQueue_.deque(), line, buffer, size);
     }
 
     void
@@ -553,39 +557,38 @@ namespace dvi
     }
 
     void
+    DVI::encodeLine12bppScaled16_7(TMDSBuffer *dst, int line, const uint16_t *src, size_t size,
+                                   int srcPixelOfs, int dstPixelOfs, int dstPixels)
+    {
+        srcPixelOfs &= ~1u;
+        dstPixelOfs &= ~1u;
+
+        encodeTMDS_RGB444_Scaled16_7(dst->data() + (dstPixelOfs >> 1),
+                                     src + srcPixelOfs,
+                                     dstPixels,
+                                     size);
+
+        validTMDSQueue_.enque({line * N_LINE_PER_DATA, N_LINE_PER_DATA, dst});
+    }
+
+    void
     DVI::convertScanBuffer12bppScaled16_7(int srcPixelOfs, int dstPixelOfs, int dstPixels)
     {
         auto dstTMDS = freeTMDSQueue_.deque();
         auto srcLine = validLineQueue_.deque();
 
-        srcPixelOfs &= ~1u;
-        dstPixelOfs &= ~1u;
-
-        auto *p = dstTMDS->data() + (dstPixelOfs >> 1);
-        encodeTMDS_RGB444_Scaled16_7(p,
-                                     srcLine.buffer->data() + srcPixelOfs,
-                                     dstPixels,
-                                     srcLine.buffer->size());
-
-        validTMDSQueue_.enque({srcLine.line * N_LINE_PER_DATA, N_LINE_PER_DATA, dstTMDS});
+        encodeLine12bppScaled16_7(dstTMDS, srcLine.line, srcLine.buffer->data(), srcLine.buffer->size(),
+                                  srcPixelOfs, dstPixelOfs, dstPixels);
+        // The line buffer belongs to the driver: give it back to the producer.
         freeLineQueue_.enque(std::move(srcLine.buffer));
     }
 
     void
     DVI::convertScanBuffer12bppScaled16_7(int srcPixelOfs, int dstPixelOfs, int dstPixels, uint16_t line, uint16_t *buffer, size_t size)
     {
-        auto dstTMDS = freeTMDSQueue_.deque();
-
-        srcPixelOfs &= ~1u;
-        dstPixelOfs &= ~1u;
-
-        auto *p = dstTMDS->data() + (dstPixelOfs >> 1);
-        encodeTMDS_RGB444_Scaled16_7(p,
-                                     buffer + srcPixelOfs,
-                                     dstPixels,
-                                     size);
-
-        validTMDSQueue_.enque({line * N_LINE_PER_DATA, N_LINE_PER_DATA, dstTMDS});
+        // The caller owns buffer, so it is not returned to freeLineQueue_.
+        encodeLine12bppScaled16_7(freeTMDSQueue_.deque(), line, buffer, size,
+                                  srcPixelOfs, dstPixelOfs, dstPixels);
     }
 
 

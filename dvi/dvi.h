@@ -112,6 +112,19 @@ namespace dvi
             TMDSBuffer *buffer{};
         };
 
+        // Encode one source line into dst and queue it for output lines
+        // 2 * line and 2 * line + 1. src is only read: the caller keeps it.
+        // One implementation per conversion, shared by the line-queue and
+        // the caller-buffer variants of convertScanBuffer12bpp*().
+        //
+        // Always inlined: a call frame of its own puts these paths 40 bytes
+        // deeper on core1's stack, which the DMA IRQ shares. With a 512-byte
+        // core1 stack that overflowed in the 8:7 mode on RP2040. Inlined, the
+        // code also lands in the SRAM-resident callers at any -O level.
+        __attribute__((always_inline)) inline void encodeLine12bpp(TMDSBuffer *dst, int line, const uint16_t *src, size_t size);
+        __attribute__((always_inline)) inline void encodeLine12bppScaled16_7(TMDSBuffer *dst, int line, const uint16_t *src, size_t size,
+                                                                             int srcPixelOfs, int dstPixelOfs, int dstPixels);
+
         // Depth of the line-buffer pool, i.e. how many scanlines the producer
         // may run ahead of scanout.
         //
