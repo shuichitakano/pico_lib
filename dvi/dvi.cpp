@@ -318,12 +318,47 @@ namespace dvi
     void
     DVI::initSerialiser()
     {
-        // Adjust PIO for gpio pins > 32
-        // The Waveshare RP2350-PiZero is a board that is using gpio pins > 32.
-        if (config_->pinTMDS[0] > 32 || config_->pinTMDS[1] > 32 || config_->pinTMDS[2] > 32)
+        // A PIO drives a window of 32 GPIOs from its GPIO base: 0-31, or
+        // 16-47 on RP2350. Both pins of every TMDS data pair (pin and pin + 1)
+        // must lie in it; GPIO 32-39 on the Waveshare RP2350-PiZero need 16.
+        // The clock pair is driven by PWM, not by the PIO, so it is left out.
+        int lo = config_->pinTMDS[0];
+        int hi = config_->pinTMDS[0] + 1;
+        for (int i = 1; i < N_TMDS_LANES; ++i)
         {
-            pio_set_gpio_base(pio_, 16);
+            lo = std::min(lo, config_->pinTMDS[i]);
+            hi = std::max(hi, config_->pinTMDS[i] + 1);
         }
+        auto fits = [lo, hi](int base)
+        { return lo >= base && hi <= base + 31; };
+
+        int gpioBase = -1;
+        if (fits(0))
+        {
+            gpioBase = 0;
+        }
+#if PICO_PIO_VERSION > 0
+        else if (fits(16))
+        {
+            gpioBase = 16;
+        }
+#endif
+        if (gpioBase < 0)
+        {
+            panic("DVI: TMDS data pins %d, %d, %d do not fit in one PIO GPIO window\n",
+                  config_->pinTMDS[0], config_->pinTMDS[1], config_->pinTMDS[2]);
+        }
+        // Before pio_add_program(): the SDK does not change the base of a PIO
+        // that has a program loaded.
+        if (pio_get_gpio_base(pio_) != static_cast<uint>(gpioBase))
+        {
+            const int rc = pio_set_gpio_base(pio_, gpioBase);
+            if (rc != PICO_OK)
+            {
+                panic("DVI: cannot set the PIO GPIO base to %d (error %d)\n", gpioBase, rc);
+            }
+        }
+
         auto configurePad = [](int gpio, bool invert)
         {
             hw_write_masked(
