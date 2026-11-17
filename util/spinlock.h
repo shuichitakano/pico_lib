@@ -45,6 +45,30 @@ namespace util
             //spin_unlock_unsafe(get());
         }
     };
+
+    // RAII guard for SpinLock. Do NOT use std::lock_guard here: its ctor/dtor
+    // are ordinary template functions, so -O0 builds emit them out of line in
+    // flash and every SRAM-resident caller (the DVI DMA IRQ handler in
+    // particular) bounces through a veneer into XIP on each lock/unlock. A
+    // stalled fetch there can miss the per-scanline DMA reload deadline and
+    // silently kill the DVI control-block chain. always_inline is honoured
+    // even at -O0, keeping the whole spin path inside the caller.
+    class SpinLockGuard
+    {
+        SpinLock &lock_;
+
+    public:
+        __attribute__((always_inline)) explicit SpinLockGuard(SpinLock &lock) : lock_(lock)
+        {
+            lock_.lock();
+        }
+        __attribute__((always_inline)) ~SpinLockGuard()
+        {
+            lock_.unlock();
+        }
+        SpinLockGuard(const SpinLockGuard &) = delete;
+        SpinLockGuard &operator=(const SpinLockGuard &) = delete;
+    };
 }
 
 #endif /* _856CBF49_9134_63AD_1EDF_7C2C21E2134C */

@@ -55,18 +55,18 @@ namespace dvi
             cfg.chData = dma_claim_unused_channel(true);
             cfg.txFIFO = &pio->txf[sm];
             cfg.dreq = pio_get_dreq(pio, sm, true /* tx */);
-            printf("lane %d: DMA ch ctrl %d, ch data %d, FIFO %p, dreq %d\n", i, cfg.chCtrl, cfg.chData, cfg.txFIFO, cfg.dreq);
+            DVI_DUMP("lane %d: DMA ch ctrl %d, ch data %d, FIFO %p, dreq %d\n", i, cfg.chCtrl, cfg.chData, cfg.txFIFO, cfg.dreq);
         }
 
-        printf("VBlankSync:\n");
+        DVI_DUMP("VBlankSync:\n");
         listVBlankSync_.setupListForVBlank(timing, cfgs_, true);
-        printf("VBlankNoSync:\n");
+        DVI_DUMP("VBlankNoSync:\n");
         listVBlankNoSync_.setupListForVBlank(timing, cfgs_, false);
-        printf("Active:\n");
+        DVI_DUMP("Active:\n");
         listActive_.setupListForActive(timing, cfgs_, reinterpret_cast<uint32_t *>(SRAM_BASE)); // この時点ではなんでもいい
-        printf("ActiveError:\n");
+        DVI_DUMP("ActiveError:\n");
         listActiveError_.setupListForActive(timing, cfgs_, nullptr);
-        printf("ActiveBlank:\n");
+        DVI_DUMP("ActiveBlank:\n");
         listActiveBlank_.setupListForActive(timing, cfgs_, nullptr, TMDSBlackSym_);
 
         // SYNC Lane のデータ転送からしか割り込みは出さない
@@ -227,7 +227,7 @@ namespace dvi
         channel_config_set_chain_to(&ch_cfg, cfg.chCtrl);
         channel_config_set_irq_quiet(&ch_cfg, !irq);
 
-        printf("%p: ch %d, ra:%p wa:%p ct:%d c:%x irq:%d\n", this, cfg.chData, read_addr, write_addr, transfer_count, ch_cfg.ctrl, irq);
+        DVI_DUMP("%p: ch %d, ra:%p wa:%p ct:%d c:%x irq:%d\n", this, cfg.chData, read_addr, write_addr, transfer_count, ch_cfg.ctrl, irq);
     }
 
     void

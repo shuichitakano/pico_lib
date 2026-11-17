@@ -15,8 +15,10 @@ namespace dvi
 
 inline void serialiserProgramInit(PIO pio, uint sm, uint offset, uint data_pins, uint nWords)
 {
-    pio_sm_set_pins_with_mask(pio, sm, 2u << data_pins, 3u << data_pins);
-    pio_sm_set_pindirs_with_mask(pio, sm, ~0u, 3u << data_pins);
+    // pio_sm_set_pins_with_mask(pio, sm, 2u << data_pins, 3u << data_pins);
+    // pio_sm_set_pindirs_with_mask(pio, sm, ~0u, 3u << data_pins);
+    pio_sm_set_pins_with_mask64(pio, sm, 2ULL << data_pins, 3ULL << data_pins);
+    pio_sm_set_pindirs_with_mask64(pio, sm, ~0ULL, 3ULL << data_pins);
     pio_gpio_init(pio, data_pins);
     pio_gpio_init(pio, data_pins + 1);
 

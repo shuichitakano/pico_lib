@@ -37,6 +37,18 @@ namespace dvi
 #include "tmds_table.h"
         };
 
+        // Same register writes as the SDK's interp_config_set_mask, which is
+        // plain `static inline` (not __force_inline): -O0 builds emit it out
+        // of line in flash, and the setupInterp* callers below run per
+        // scanline on core1, which must never fetch flash code while the
+        // loader programs flash. always_inline holds at every -O level.
+        __attribute__((always_inline)) inline void interpConfigSetMask(interp_config *c, uint mask_lsb, uint mask_msb)
+        {
+            c->ctrl = (c->ctrl & ~(SIO_INTERP0_CTRL_LANE0_MASK_LSB_BITS | SIO_INTERP0_CTRL_LANE0_MASK_MSB_BITS)) |
+                      ((mask_lsb << SIO_INTERP0_CTRL_LANE0_MASK_LSB_LSB) & SIO_INTERP0_CTRL_LANE0_MASK_LSB_BITS) |
+                      ((mask_msb << SIO_INTERP0_CTRL_LANE0_MASK_MSB_LSB) & SIO_INTERP0_CTRL_LANE0_MASK_MSB_BITS);
+        }
+
         int __not_in_flash_func(setupInterp)(interp_hw_t *interp, int bpp, int shift, int bits,
                                              const uint32_t *lut, int lutSizeInBits)
         {
@@ -55,13 +67,13 @@ namespace dvi
             {
                 auto c = interp_default_config();
                 interp_config_set_shift(&c, rshift);
-                interp_config_set_mask(&c, maskLSB, maskMSB);
+                interpConfigSetMask(&c, maskLSB, maskMSB);
                 interp_set_config(interp, 0, &c);
             }
             {
                 auto c = interp_default_config();
                 interp_config_set_shift(&c, rshift + bpp);
-                interp_config_set_mask(&c, maskLSB, maskMSB);
+                interpConfigSetMask(&c, maskLSB, maskMSB);
                 interp_config_set_cross_input(&c, true);
                 interp_set_config(interp, 1, &c);
             }
@@ -75,13 +87,31 @@ namespace dvi
         struct SaveInterp
         {
             interp_hw_save_t s;
-            inline SaveInterp()
+            // Inlined SDK interp_save/interp_restore bodies. Two reasons:
+            //  1. During the bootloader's UF2 flash op, XIP is briefly off
+            //     per bootrom call -- a flash fetch on core1 would hardfault.
+            //  2. At cold startup the XIP cache is empty; 6 flash calls per
+            //     scanline can push core1's encode loop slow enough that the
+            //     freeTMDSQueue starves and the IRQ stalls.
+            inline __attribute__((always_inline)) SaveInterp()
             {
-                interp_save(interp0_hw, &s);
+                s.accum[0] = interp0_hw->accum[0];
+                s.accum[1] = interp0_hw->accum[1];
+                s.base[0]  = interp0_hw->base[0];
+                s.base[1]  = interp0_hw->base[1];
+                s.base[2]  = interp0_hw->base[2];
+                s.ctrl[0]  = interp0_hw->ctrl[0];
+                s.ctrl[1]  = interp0_hw->ctrl[1];
             }
-            inline ~SaveInterp()
+            inline __attribute__((always_inline)) ~SaveInterp()
             {
-                interp_restore(interp0_hw, &s);
+                interp0_hw->accum[0] = s.accum[0];
+                interp0_hw->accum[1] = s.accum[1];
+                interp0_hw->base[0]  = s.base[0];
+                interp0_hw->base[1]  = s.base[1];
+                interp0_hw->base[2]  = s.base[2];
+                interp0_hw->ctrl[0]  = s.ctrl[0];
+                interp0_hw->ctrl[1]  = s.ctrl[1];
             }
         };
     }
@@ -158,13 +188,13 @@ namespace dvi
             {
                 auto c = interp_default_config();
                 interp_config_set_shift(&c, crossInput ? bits : bits + bpp);
-                interp_config_set_mask(&c, maskLSB, maskMSB);
+                interpConfigSetMask(&c, maskLSB, maskMSB);
                 interp_set_config(interp, 0, &c);
             }
             {
                 auto c = interp_default_config();
                 interp_config_set_shift(&c, crossInput ? bpp : 0);
-                interp_config_set_mask(&c, maskLSB + bits, maskMSB + bits);
+                interpConfigSetMask(&c, maskLSB + bits, maskMSB + bits);
                 if (crossInput)
                 {
                     interp_config_set_cross_input(&c, true);

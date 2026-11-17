@@ -11,6 +11,7 @@
 #include <hardware/gpio.h>
 #include <hardware/pwm.h>
 #include <hardware/irq.h>
+#include <hardware/timer.h>
 #include <hardware/structs/padsbank0.h>
 #include <stdio.h>
 #include <assert.h>
@@ -31,7 +32,7 @@ namespace dvi
         assert(pio_);
         assert(config_);
         assert(timing_);
-
+       
         initSerialiser();
         allocateBuffers(timing);
 
@@ -146,6 +147,35 @@ namespace dvi
                 lineCounter_ >= (timing_->vActiveLines - blankSettings_.bottom))
             {
                 blankLine = true;
+
+                // Retire whatever came due on this line even though the line is
+                // blanked, rather than leaving it queued forever.
+                //
+                // The blank margins are changed at runtime: every menu sets them
+                // to zero while it is open, draws all SCREENHEIGHT lines, and
+                // restores them on exit. Buffers already queued for lines that
+                // the restore puts back inside a margin were never consumed --
+                // the branch below is the only place that touches the queue, and
+                // it does not run for a blank line. freeTMDSQueue_ then drained,
+                // core1 blocked in convertScanBuffer12bpp()'s
+                // freeTMDSQueue_.deque(), validLineQueue_ filled behind it and
+                // the producer blocked in getLineBuffer() forever, with the
+                // display stuck on listActiveError_ (red). Deeper line pools
+                // widen the window, because more stale menu lines survive the
+                // transition, but the stranding itself is margin-driven.
+                if (curTMDSBuffer_)
+                {
+                    // Straddled the boundary mid-source-line. Release through
+                    // the deferred slot: the DMA may still be reading it.
+                    releaseTMDSBuffer_[0] = curTMDSBuffer_;
+                    curTMDSBuffer_ = nullptr;
+                }
+                else if (validTMDSQueue_.size() &&
+                         validTMDSQueue_.peek().first == lineCounter_)
+                {
+                    // Never handed to the DMA, so it can go straight back.
+                    freeTMDSQueue_.enque(validTMDSQueue_.deque().buffer);
+                }
             }
             else
             {
@@ -153,16 +183,21 @@ namespace dvi
                 {
                     if (validTMDSQueue_.size())
                     {
-                        int line = validTMDSQueue_.peek().line;
-                        if (line * 2 == lineCounter_)
+                        const auto next = validTMDSQueue_.peek();
+                        if (next.first == lineCounter_)
                         {
+                            curLast_ = next.first + next.count - 1;
                             curTMDSBuffer_ = validTMDSQueue_.deque().buffer;
                         }
                     }
                 }
                 tmdsBuf = curTMDSBuffer_ ? curTMDSBuffer_->data() : nullptr;
+                if (!tmdsBuf)
+                {
+                    ++missedLines_;
+                }
 
-                if (lineCounter_ % N_LINE_PER_DATA == N_LINE_PER_DATA - 1)
+                if (curTMDSBuffer_ && lineCounter_ == curLast_)
                 {
                     releaseTMDSBuffer_[0] = curTMDSBuffer_;
                     curTMDSBuffer_ = nullptr;
@@ -198,16 +233,6 @@ namespace dvi
                 return false;
             }
 
-            if (pendingAudioLineCount_)
-            {
-                --pendingAudioLineCount_;
-                return false;
-            }
-            if (audioSampleRing_.getReadableSize() == 0)
-            {
-                pendingAudioLineCount_ = 1024; // 枯渇しているようなら 2 frame くらい待ってみる
-            }
-
             audioSamplePos_ += samplesPerLine16_;
 
             if (lineState_ == LineState::FRONT_PORCH)
@@ -232,31 +257,28 @@ namespace dvi
                 }
             }
 
-#if 0
-            if (leftAudioSampleCount_)
-            {
-                const auto n = std::min(leftAudioSampleCount_, std::min<int>(audioSampleRing_.getReadableSize(), 2));
-                if (n)
-                {
-                    const auto *p = audioSampleRing_.getReadPointer();
-                    audioFrameCount_ = packet.setAudioSample(p, n, audioFrameCount_);
-                    audioSampleRing_.advanceReadPointer(n);
-                    leftAudioSampleCount_ -= n;
-                    return true;
-                }
-            }
-#else
-            //            audioSamplePos_ += samplesPerLine16_;
-            int n = std::max(0, std::min(4, std::min<int>(audioSamplePos_ >> 16, audioSampleRing_.getReadableSize())));
-            audioSamplePos_ -= n << 16;
-            if (n)
+            int due = std::max(0, std::min(4, static_cast<int>(audioSamplePos_ >> 16)));
+            int avail = audioSampleRing_.getReadableSize();
+            int n = std::min(due, avail);
+            if (n > 0)
             {
                 const auto *p = audioSampleRing_.getReadPointer();
                 audioFrameCount_ = packet.setAudioSample(p, n, audioFrameCount_);
                 audioSampleRing_.advanceReadPointer(n);
+                audioSamplePos_ -= n << 16;
                 return true;
             }
-#endif
+            if (due > 0)
+            {
+                // SRAM-resident silence: a static const in flash would
+                // hardfault core1 if reached during an XIP-off window,
+                // and would also add a cold-cache flash fetch to the
+                // first frames after boot.
+                static AudioSample __not_in_flash("dvi_silence") silence[4] = {};
+                audioFrameCount_ = packet.setAudioSample(silence, due, audioFrameCount_);
+                audioSamplePos_ -= due << 16;
+                return true;
+            }
 
             return false;
         };
@@ -296,6 +318,47 @@ namespace dvi
     void
     DVI::initSerialiser()
     {
+        // A PIO drives a window of 32 GPIOs from its GPIO base: 0-31, or
+        // 16-47 on RP2350. Both pins of every TMDS data pair (pin and pin + 1)
+        // must lie in it; GPIO 32-39 on the Waveshare RP2350-PiZero need 16.
+        // The clock pair is driven by PWM, not by the PIO, so it is left out.
+        int lo = config_->pinTMDS[0];
+        int hi = config_->pinTMDS[0] + 1;
+        for (int i = 1; i < N_TMDS_LANES; ++i)
+        {
+            lo = std::min(lo, config_->pinTMDS[i]);
+            hi = std::max(hi, config_->pinTMDS[i] + 1);
+        }
+        auto fits = [lo, hi](int base)
+        { return lo >= base && hi <= base + 31; };
+
+        int gpioBase = -1;
+        if (fits(0))
+        {
+            gpioBase = 0;
+        }
+#if PICO_PIO_VERSION > 0
+        else if (fits(16))
+        {
+            gpioBase = 16;
+        }
+#endif
+        if (gpioBase < 0)
+        {
+            panic("DVI: TMDS data pins %d, %d, %d do not fit in one PIO GPIO window\n",
+                  config_->pinTMDS[0], config_->pinTMDS[1], config_->pinTMDS[2]);
+        }
+        // Before pio_add_program(): the SDK does not change the base of a PIO
+        // that has a program loaded.
+        if (pio_get_gpio_base(pio_) != static_cast<uint>(gpioBase))
+        {
+            const int rc = pio_set_gpio_base(pio_, gpioBase);
+            if (rc != PICO_OK)
+            {
+                panic("DVI: cannot set the PIO GPIO base to %d (error %d)\n", gpioBase, rc);
+            }
+        }
+
         auto configurePad = [](int gpio, bool invert)
         {
             hw_write_masked(
@@ -438,8 +501,15 @@ namespace dvi
         encodeTMDS_RGB555(dstTMDS->data(),
                           srcLine.buffer->data(), srcLine.buffer->size());
 
-        validTMDSQueue_.enque({srcLine.line, dstTMDS});
+        validTMDSQueue_.enque({srcLine.line * N_LINE_PER_DATA, N_LINE_PER_DATA, dstTMDS});
         freeLineQueue_.enque(std::move(srcLine.buffer));
+    }
+
+    void
+    DVI::encodeLine12bpp(TMDSBuffer *dst, int line, const uint16_t *src, size_t size)
+    {
+        encodeTMDS_RGB444(dst->data(), src, size);
+        validTMDSQueue_.enque({line * N_LINE_PER_DATA, N_LINE_PER_DATA, dst});
     }
 
     void
@@ -448,11 +518,57 @@ namespace dvi
         auto dstTMDS = freeTMDSQueue_.deque();
         auto srcLine = validLineQueue_.deque();
 
-        encodeTMDS_RGB444(dstTMDS->data(),
-                          srcLine.buffer->data(), srcLine.buffer->size());
-
-        validTMDSQueue_.enque({srcLine.line, dstTMDS});
+        encodeLine12bpp(dstTMDS, srcLine.line, srcLine.buffer->data(), srcLine.buffer->size());
+        // The line buffer belongs to the driver: give it back to the producer.
         freeLineQueue_.enque(std::move(srcLine.buffer));
+    }
+
+    void
+    DVI::convertScanBuffer12bpp(uint16_t line, uint16_t *buffer, size_t size)
+    {
+        // The caller owns buffer, so it is not returned to freeLineQueue_.
+        encodeLine12bpp(freeTMDSQueue_.deque(), line, buffer, size);
+    }
+
+    void
+    DVI::convertScanBuffer12bppRows(int first, int count, const uint16_t *src, int width)
+    {
+        const uint32_t t0 = time_us_32();
+        auto dstTMDS = freeTMDSQueue_.deque();
+        rowsWaitUs_ += time_us_32() - t0;
+
+        // A word of TMDS symbols per source pixel. The buffers also carry
+        // 320-pixel lines, so the borders are written every time.
+        const int chStride = timing_->hActivePixels / N_CHAR_PER_WORD;
+        const int border = (chStride - width) / 2;
+        assert((width & 3) == 0 && border >= 0);
+        auto *p = dstTMDS->data();
+        for (int ch = 0; ch < static_cast<int>(N_COLOR_CH); ++ch, p += chStride)
+        {
+            for (int i = 0; i < border; ++i)
+            {
+                p[i] = 0x7fd00u; // 0, 0
+                p[chStride - 1 - i] = 0x7fd00u;
+            }
+            encodeTMDSChannel16bpp(p + border, reinterpret_cast<const uint32_t *>(src), width, ch * 4, 4);
+        }
+
+        validTMDSQueue_.enque({first, count, dstTMDS});
+    }
+
+    void
+    DVI::encodeLine12bppScaled16_7(TMDSBuffer *dst, int line, const uint16_t *src, size_t size,
+                                   int srcPixelOfs, int dstPixelOfs, int dstPixels)
+    {
+        srcPixelOfs &= ~1u;
+        dstPixelOfs &= ~1u;
+
+        encodeTMDS_RGB444_Scaled16_7(dst->data() + (dstPixelOfs >> 1),
+                                     src + srcPixelOfs,
+                                     dstPixels,
+                                     size);
+
+        validTMDSQueue_.enque({line * N_LINE_PER_DATA, N_LINE_PER_DATA, dst});
     }
 
     void
@@ -461,23 +577,43 @@ namespace dvi
         auto dstTMDS = freeTMDSQueue_.deque();
         auto srcLine = validLineQueue_.deque();
 
-        srcPixelOfs &= ~1u;
-        dstPixelOfs &= ~1u;
-
-        auto *p = dstTMDS->data() + (dstPixelOfs >> 1);
-        encodeTMDS_RGB444_Scaled16_7(p,
-                                     srcLine.buffer->data() + srcPixelOfs,
-                                     dstPixels,
-                                     srcLine.buffer->size());
-
-        validTMDSQueue_.enque({srcLine.line, dstTMDS});
+        encodeLine12bppScaled16_7(dstTMDS, srcLine.line, srcLine.buffer->data(), srcLine.buffer->size(),
+                                  srcPixelOfs, dstPixelOfs, dstPixels);
+        // The line buffer belongs to the driver: give it back to the producer.
         freeLineQueue_.enque(std::move(srcLine.buffer));
     }
 
     void
+    DVI::convertScanBuffer12bppScaled16_7(int srcPixelOfs, int dstPixelOfs, int dstPixels, uint16_t line, uint16_t *buffer, size_t size)
+    {
+        // The caller owns buffer, so it is not returned to freeLineQueue_.
+        encodeLine12bppScaled16_7(freeTMDSQueue_.deque(), line, buffer, size,
+                                  srcPixelOfs, dstPixelOfs, dstPixels);
+    }
+
+
+    void
     DVI::setAudioFreq(int freq, int CTS, int N)
     {
+        // Map/advise on non-standard sample rates: only 32000, 44100, 48000 are explicitly encoded
+        if (!(freq == 32000 || freq == 44100 || freq == 48000))
+        {
+            printf("[DVI] Warning: non-standard audio freq %d Hz requested. InfoFrame will advertise nearest standard.\n", freq);
+        }
         audioFreq_ = freq;
+
+        // If CTS==0, auto-compute a suitable CTS for given N,freq and current pixel clock
+        // Fs = Fpix * N / (128 * CTS)  => CTS = Fpix * N / (128 * Fs)
+        if (CTS == 0 && freq > 0 && N > 0)
+        {
+            uint64_t Fpix = timing_->getPixelClock();
+            printf("Pixel clock %llu Hz, computing CTS for %d Hz, N=%d\n", Fpix, freq, N);
+            uint64_t numerator = Fpix * static_cast<uint64_t>(N);
+            uint64_t denom = static_cast<uint64_t>(128) * static_cast<uint64_t>(freq);
+            CTS = static_cast<int>((numerator + denom / 2) / denom); // rounded
+            // For common 48k/6144 pattern, CTS should equal pixelClock/1000 if pixelClock in Hz multiple of 1k.
+        }
+
         audioClockRegeneration_.setAudioClockRegeneration(CTS, N);
         audioInfoFrame_.setAudioInfoFrame(freq);
 
@@ -490,8 +626,17 @@ namespace dvi
 
         samplesPerFrame_ = static_cast<int>(static_cast<uint64_t>(freq) * nPixPerFrame / pixelClock);
         samplesPerLine16_ = static_cast<int>(static_cast<uint64_t>(freq) * nPixPerLine * 65536 / pixelClock);
-        printf("setAudioFreq: %d Hz, CTS %d, N %d, %d samples/frame %d/65536 samples/line\n", freq, CTS, N, samplesPerFrame_,
-               samplesPerLine16_);
+     // Reconstructed Fs from CTS/N for diagnostics
+     double reconstructedFs = (double)pixelClock * (double)N / (128.0 * (double)CTS);
+     double ppmError = (reconstructedFs - freq) * 1e6 / freq;
+     printf("setAudioFreq: req %d Hz, CTS %d, N %d, recon %.3f Hz (%.1f ppm), %d samples/frame %d/65536 samples/line\n",
+         freq, CTS, N, reconstructedFs, ppmError, samplesPerFrame_, samplesPerLine16_);
+
+     // Reset internal audio packet scheduling state so a runtime switch is clean.
+     audioSamplePos_ = 0;
+     leftAudioSampleCount_ = 0;
+     pendingAudioLineCount_ = 0;
+     audioFrameCount_ = 0;
 
         enableDataIsland();
     }

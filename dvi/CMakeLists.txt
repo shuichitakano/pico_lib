@@ -26,6 +26,7 @@ INTERFACE
     hardware_pio
     hardware_gpio
     hardware_pwm
+    hardware_timer
 )
 
 #set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0")

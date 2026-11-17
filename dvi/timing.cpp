@@ -10,7 +10,9 @@ namespace dvi
 {
     namespace
     {
-        const Timing __not_in_flash_func(timing640x480p60_) = {
+        // Base timing template; pixel clock filled dynamically when requested
+        //const Timing __not_in_flash_func(timing640x480p60_) = {
+        const Timing timing640x480p60_ = {
             .hSyncPolarity = false,
             .hFrontPorch = 16,
             .hSyncWidth = 96,
@@ -23,13 +25,18 @@ namespace dvi
             .vBackPorch = 33,
             .vActiveLines = 480,
 
-            .bitClockKHz = 252000,
+            .bitClockKHz = 252000, // placeholder; real value substituted at retrieval
         };
     }
 
     const Timing *getTiming640x480p60Hz()
     {
-        return &timing640x480p60_;
+        static Timing dynamicTiming;
+        dynamicTiming = timing640x480p60_;
+        uint32_t hz = clock_get_hz(clk_sys);
+        dynamicTiming.bitClockKHz = hz / 1000; // truncate to kHz
+        return &dynamicTiming;
+       // return &timing640x480p60_;
     }
 
     uint32_t

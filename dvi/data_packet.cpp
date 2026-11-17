@@ -136,8 +136,11 @@ namespace dvi
             0b1011000011,
         };
 
-        constexpr uint32_t makeTERC4x2Char(int i0, int i1) { return TERC4Syms_[i0] | (TERC4Syms_[i1] << 10); }
-        constexpr uint32_t makeTERC4x2Char(int i) { return TERC4Syms_[i] | (TERC4Syms_[i] << 10); }
+        // constexpr does not stop -O0 builds from emitting these as real
+        // functions for the runtime calls in the encode path, so they need
+        // the SRAM section attribute like everything else the DMA IRQ runs.
+        constexpr uint32_t __not_in_flash_func(makeTERC4x2Char)(int i0, int i1) { return TERC4Syms_[i0] | (TERC4Syms_[i1] << 10); }
+        constexpr uint32_t __not_in_flash_func(makeTERC4x2Char)(int i) { return TERC4Syms_[i] | (TERC4Syms_[i] << 10); }
         constexpr uint32_t TERC4_0x2CharSym_ = makeTERC4x2Char(0);
 
         // Data Gaurdband (lane 1, 2)
@@ -212,12 +215,12 @@ namespace dvi
     void
     DataPacket::dump() const
     {
-        printf("HB: %02x %02x %02x:%02x\n", header[0], header[1], header[2], header[3]);
+        DVI_DUMP("HB: %02x %02x %02x:%02x\n", header[0], header[1], header[2], header[3]);
         for (int i = 0; i < 4; ++i)
         {
-            printf("SP%d: %02x %02x %02x %02x %02x %02x %02x:%02x\n", i,
-                   subPacket[i][0], subPacket[i][1], subPacket[i][2], subPacket[i][3],
-                   subPacket[i][4], subPacket[i][5], subPacket[i][6], subPacket[i][7]);
+            DVI_DUMP("SP%d: %02x %02x %02x %02x %02x %02x %02x:%02x\n", i,
+                     subPacket[i][0], subPacket[i][1], subPacket[i][2], subPacket[i][3],
+                     subPacket[i][4], subPacket[i][5], subPacket[i][6], subPacket[i][7]);
         }
     }
 
@@ -285,10 +288,25 @@ namespace dvi
         dst[2][N_DATA_ISLAND_WORDS - 1] = dataGaurdbandSym_;
     }
 
+    namespace
+    {
+        // memset() lives in flash and both callers below run inside the DVI
+        // DMA IRQ, which must never fetch flash code (an XIP stall can miss
+        // the per-scanline DMA reload deadline and kill the chain). The
+        // volatile pointer keeps the compiler from turning the loop back
+        // into a memset call at higher optimisation levels.
+        __attribute__((always_inline)) inline void zeroBytes(void *dst, size_t n)
+        {
+            auto *p = static_cast<volatile uint8_t *>(dst);
+            while (n--)
+                *p++ = 0;
+        }
+    }
+
     void
     DataPacket::setNull()
     {
-        memset(this, 0, sizeof(*this));
+        zeroBytes(this, sizeof(*this));
     }
 
     void
@@ -343,7 +361,7 @@ namespace dvi
             ++p;
             // channel status 真面目に扱う必要があるだろうか?
         }
-        memset(&subPacket[n], 0, 8 * (4 - n));
+        zeroBytes(&subPacket[n], 8 * (4 - n));
         //        dump();
 
         frameCt -= n;
